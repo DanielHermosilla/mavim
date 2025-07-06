@@ -1,15 +1,15 @@
 local M = {}
 
---- Renderize manim scenes using a background job.
--- @param opts table with options, such as the executable path, build directory, and default quality.
--- @param file route to the .py
--- @param scenes table with the scene names
--- @param quality quality flags ("-pqh", "-pql", …)
--- @param on_done
+--- Render one or more Manim scenes using a background job.
+-- @param opts      Table containing configuration options (executable paths, build directory, default quality, etc.)
+-- @param file      Path to the current .py source file
+-- @param scenes    Array of scene class names to render
+-- @param quality   Render quality flag (e.g. "-pqh", "-pql"); defaults to opts.default_quality
+-- @param on_done   Optional callback invoked with the list of output file paths upon successful completion
 function M.render(opts, file, scenes, quality, on_done)
 	quality = quality or opts.default_quality
 
-	-- Construct the manim executable command
+	-- Build the Manim command arguments
 	local args = {
 		opts.manim_executable,
 		quality,
@@ -19,29 +19,44 @@ function M.render(opts, file, scenes, quality, on_done)
 	}
 	vim.list_extend(args, scenes)
 
-	-- Get the outputs
-	local stderr = {}
+	-- Buffers to collect stdout and stderr
+	local stdout, stderr = {}, {}
 
-	-- Launch the background job
+	-- Notify start
+	vim.notify(
+		"▶️ Starting Manim render: " .. table.concat(scenes, ", "),
+		vim.log.levels.INFO,
+		{ title = "ManimRender" }
+	)
+
+	-- Launch the job in background
 	local job_id = vim.fn.jobstart(args, {
 		cwd = vim.fn.getcwd(),
 		stdout_buffered = true,
 		stderr_buffered = true,
-		on_stdout = function(_, data, _)
-			-- Capture stdout, until now it is not necessary
-		end,
-		on_stderr = function(_, data, _)
+		on_stdout = function(_, data)
 			if data then
-				for _, line in ipairs(data) do
-					table.insert(stderr, line)
-				end
+				vim.list_extend(stdout, data)
 			end
 		end,
-		on_exit = vim.schedule_wrap(function(_, exit_code, _)
-			if exit_code == 0 then
-				vim.notify("✅ Manim was compiled.", vim.log.levels.INFO)
+		on_stderr = function(_, data)
+			if data then
+				vim.list_extend(stderr, data)
+			end
+		end,
+		on_exit = vim.schedule_wrap(function(_, exit_code)
+			-- Check for explicit errors in output even if exit_code == 0
+			local has_traceback = false
+			for _, line in ipairs(stdout) do
+				if line:match("Traceback") or line:match("Error") then
+					has_traceback = true
+					break
+				end
+			end
+			local failed = exit_code ~= 0 or has_traceback or #stderr > 0
+			if not failed then
+				vim.notify("✅ Manim render completed successfully.", vim.log.levels.INFO, { title = "ManimRender" })
 				if on_done then
-					-- calcula rutas de salida para cada escena
 					local outputs = {}
 					local base = vim.fn.fnamemodify(file, ":r")
 					for _, scene in ipairs(scenes) do
@@ -50,8 +65,11 @@ function M.render(opts, file, scenes, quality, on_done)
 					on_done(outputs)
 				end
 			else
+				local log = {}
+				vim.list_extend(log, stdout)
+				vim.list_extend(log, stderr)
 				vim.notify(
-					"❌ Error in Manim:\n" .. table.concat(stderr, "\n"),
+					"❌ Manim render failed:\n" .. table.concat(log, "\n"),
 					vim.log.levels.ERROR,
 					{ title = "ManimRender" }
 				)
@@ -60,7 +78,76 @@ function M.render(opts, file, scenes, quality, on_done)
 	})
 
 	if job_id <= 0 then
-		vim.notify("Manim couldn't be initialized (" .. tostring(job_id) .. ")", vim.log.levels.ERROR)
+		vim.notify(
+			"❌ Failed to start Manim (jobstart returned " .. tostring(job_id) .. ")",
+			vim.log.levels.ERROR,
+			{ title = "ManimRender" }
+		)
+	end
+end
+
+--- Render slides using the `manim-slides` CLI in the background.
+-- Enhanced to detect errors in output.
+function M.render_slides(opts, file, slides)
+	local cmd = { opts.manim_slides_executable or "manim-slides", "render", file }
+	vim.list_extend(cmd, slides)
+
+	local stdout, stderr = {}, {}
+
+	vim.notify(
+		"▶️ Starting slide render: " .. table.concat(slides, ", "),
+		vim.log.levels.INFO,
+		{ title = "ManimSlideRender" }
+	)
+
+	local job_id = vim.fn.jobstart(cmd, {
+		cwd = vim.fn.getcwd(),
+		stdout_buffered = true,
+		stderr_buffered = true,
+		on_stdout = function(_, data)
+			if data then
+				vim.list_extend(stdout, data)
+			end
+		end,
+		on_stderr = function(_, data)
+			if data then
+				vim.list_extend(stderr, data)
+			end
+		end,
+		on_exit = vim.schedule_wrap(function(_, exit_code)
+			local has_traceback = false
+			for _, line in ipairs(stdout) do
+				if line:match("Traceback") or line:match("Error") then
+					has_traceback = true
+					break
+				end
+			end
+			local failed = exit_code ~= 0 or has_traceback or #stderr > 0
+			if not failed then
+				vim.notify(
+					"✅ Slide render completed successfully.",
+					vim.log.levels.INFO,
+					{ title = "ManimSlideRender" }
+				)
+			else
+				local log = {}
+				vim.list_extend(log, stdout)
+				vim.list_extend(log, stderr)
+				vim.notify(
+					"❌ Slide render failed:\n" .. table.concat(log, "\n"),
+					vim.log.levels.ERROR,
+					{ title = "ManimSlideRender" }
+				)
+			end
+		end),
+	})
+
+	if job_id <= 0 then
+		vim.notify(
+			"❌ Failed to start slide render (jobstart returned " .. tostring(job_id) .. ")",
+			vim.log.levels.ERROR,
+			{ title = "ManimSlideRender" }
+		)
 	end
 end
 
