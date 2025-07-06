@@ -151,4 +151,69 @@ function M.render_slides(opts, file, slides)
 	end
 end
 
+--- Launches `manim-slides present` on the given slides in background.
+-- @param opts   Table of config (must include `manim_slides_executable`)
+-- @param file   Path to the current .py source file
+-- @param slides Array of slide class names to present
+function M.present_slides(opts, file, slides)
+	-- Build the CLI: manim-slides present <file> <Slide1> <Slide2> …
+	local cmd = {
+		opts.manim_slides_executable or "manim-slides",
+		"present",
+		file,
+	}
+	vim.list_extend(cmd, slides)
+
+	-- Buffers to capture any output
+	local stdout, stderr = {}, {}
+
+	-- Notify user that presentation is starting
+	vim.notify(
+		"▶️ Starting slide presentation: " .. table.concat(slides, ", "),
+		vim.log.levels.INFO,
+		{ title = "ManimSlidesPresent" }
+	)
+
+	-- Start the job in the background
+	local job_id = vim.fn.jobstart(cmd, {
+		cwd = vim.fn.getcwd(),
+		stdout_buffered = true,
+		stderr_buffered = true,
+		on_stdout = function(_, data)
+			if data then
+				vim.list_extend(stdout, data)
+			end
+		end,
+		on_stderr = function(_, data)
+			if data then
+				vim.list_extend(stderr, data)
+			end
+		end,
+		on_exit = vim.schedule_wrap(function(_, exit_code)
+			-- Detect errors even if exit_code == 0
+			local has_error = exit_code ~= 0
+			if not has_error then
+				vim.notify("✅ Slide presentation completed.", vim.log.levels.INFO, { title = "ManimSlidesPresent" })
+			else
+				local log = {}
+				vim.list_extend(log, stdout)
+				vim.list_extend(log, stderr)
+				vim.notify(
+					"❌ Slide presentation failed:\n" .. table.concat(log, "\n"),
+					vim.log.levels.ERROR,
+					{ title = "ManimSlidesPresent" }
+				)
+			end
+		end),
+	})
+
+	if job_id <= 0 then
+		vim.notify(
+			"❌ Failed to start slide presentation (jobstart returned " .. tostring(job_id) .. ")",
+			vim.log.levels.ERROR,
+			{ title = "ManimSlidesPresent" }
+		)
+	end
+end
+
 return M
