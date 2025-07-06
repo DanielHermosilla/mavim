@@ -1,11 +1,12 @@
+-- lua/manim_plugin/job.lua
 local M = {}
 
 --- Render one or more Manim scenes using a background job.
--- @param opts      Table containing configuration options (executable paths, build directory, default quality, etc.)
--- @param file      Path to the current .py source file
--- @param scenes    Array of scene class names to render
--- @param quality   Render quality flag (e.g. "-pqh", "-pql"); defaults to opts.default_quality
--- @param on_done   Optional callback invoked with the list of output file paths upon successful completion
+-- @param opts    Table of configuration options (manim_executable, build_dir, default_quality)
+-- @param file    Path to the current .py source file
+-- @param scenes  Array of scene class names to render
+-- @param quality Render quality flag (e.g. "-pqh", "-pql"); defaults to opts.default_quality
+-- @param on_done Optional callback invoked with the list of output file paths upon success
 function M.render(opts, file, scenes, quality, on_done)
 	quality = quality or opts.default_quality
 
@@ -45,15 +46,16 @@ function M.render(opts, file, scenes, quality, on_done)
 			end
 		end,
 		on_exit = vim.schedule_wrap(function(_, exit_code)
-			-- Check for explicit errors in output even if exit_code == 0
+			-- Detect Python traceback in stdout
 			local has_traceback = false
 			for _, line in ipairs(stdout) do
-				if line:match("Traceback") or line:match("Error") then
+				if line:match("Traceback") then
 					has_traceback = true
 					break
 				end
 			end
-			local failed = exit_code ~= 0 or has_traceback or #stderr > 0
+			local failed = exit_code ~= 0 or has_traceback
+
 			if not failed then
 				vim.notify("✅ Manim render completed successfully.", vim.log.levels.INFO, { title = "ManimRender" })
 				if on_done then
@@ -65,8 +67,8 @@ function M.render(opts, file, scenes, quality, on_done)
 					on_done(outputs)
 				end
 			else
-				local log = {}
-				vim.list_extend(log, stdout)
+				-- Combine stdout and stderr for error report
+				local log = vim.deepcopy(stdout)
 				vim.list_extend(log, stderr)
 				vim.notify(
 					"❌ Manim render failed:\n" .. table.concat(log, "\n"),
@@ -86,20 +88,30 @@ function M.render(opts, file, scenes, quality, on_done)
 	end
 end
 
---- Render slides using the `manim-slides` CLI in the background.
--- Enhanced to detect errors in output.
+--- Render slides using the `manim-slides render` CLI in the background.
+-- @param opts   Table of configuration options (manim_slides_executable)
+-- @param file   Path to the current .py source file
+-- @param slides Array of slide class names to render
 function M.render_slides(opts, file, slides)
-	local cmd = { opts.manim_slides_executable or "manim-slides", "render", file }
+	-- Build the manim-slides render command
+	local cmd = {
+		opts.manim_slides_executable or "manim-slides",
+		"render",
+		file,
+	}
 	vim.list_extend(cmd, slides)
 
+	-- Buffers to collect stdout and stderr
 	local stdout, stderr = {}, {}
 
+	-- Notify start
 	vim.notify(
 		"▶️ Starting slide render: " .. table.concat(slides, ", "),
 		vim.log.levels.INFO,
-		{ title = "ManimSlideRender" }
+		{ title = "ManimSlidesRender" }
 	)
 
+	-- Launch the job in background
 	local job_id = vim.fn.jobstart(cmd, {
 		cwd = vim.fn.getcwd(),
 		stdout_buffered = true,
@@ -115,23 +127,25 @@ function M.render_slides(opts, file, slides)
 			end
 		end,
 		on_exit = vim.schedule_wrap(function(_, exit_code)
+			-- Detect Python traceback in stdout
 			local has_traceback = false
 			for _, line in ipairs(stdout) do
-				if line:match("Traceback") or line:match("Error") then
+				if line:match("Traceback") then
 					has_traceback = true
 					break
 				end
 			end
-			local failed = exit_code ~= 0 or has_traceback or #stderr > 0
+			local failed = exit_code ~= 0 or has_traceback
+
 			if not failed then
 				vim.notify(
 					"✅ Slide render completed successfully.",
 					vim.log.levels.INFO,
-					{ title = "ManimSlideRender" }
+					{ title = "ManimSlidesRender" }
 				)
 			else
-				local log = {}
-				vim.list_extend(log, stdout)
+				-- Combine stdout and stderr for error report
+				local log = vim.deepcopy(stdout)
 				vim.list_extend(log, stderr)
 				vim.notify(
 					"❌ Slide render failed:\n" .. table.concat(log, "\n"),
@@ -151,30 +165,30 @@ function M.render_slides(opts, file, slides)
 	end
 end
 
---- Launches `manim-slides present` on the given slides in background.
--- @param opts   Table of config (must include `manim_slides_executable`)
+--- Present slides using the `manim-slides present` CLI in the background.
+-- @param opts   Table of configuration options (manim_slides_executable)
 -- @param file   Path to the current .py source file
 -- @param slides Array of slide class names to present
 function M.present_slides(opts, file, slides)
-	-- Build the CLI: manim-slides present <file> <Slide1> <Slide2> …
+	-- Build the manim-slides present command
 	local cmd = {
 		opts.manim_slides_executable or "manim-slides",
 		"present",
-		file,
+		-- file,
 	}
 	vim.list_extend(cmd, slides)
 
-	-- Buffers to capture any output
+	-- Buffers to collect stdout and stderr
 	local stdout, stderr = {}, {}
 
-	-- Notify user that presentation is starting
+	-- Notify start
 	vim.notify(
 		"▶️ Starting slide presentation: " .. table.concat(slides, ", "),
 		vim.log.levels.INFO,
 		{ title = "ManimSlidesPresent" }
 	)
 
-	-- Start the job in the background
+	-- Launch the job in background
 	local job_id = vim.fn.jobstart(cmd, {
 		cwd = vim.fn.getcwd(),
 		stdout_buffered = true,
@@ -190,13 +204,25 @@ function M.present_slides(opts, file, slides)
 			end
 		end,
 		on_exit = vim.schedule_wrap(function(_, exit_code)
-			-- Detect errors even if exit_code == 0
-			local has_error = exit_code ~= 0
-			if not has_error then
-				vim.notify("✅ Slide presentation completed.", vim.log.levels.INFO, { title = "ManimSlidesPresent" })
+			-- Detect Python traceback in stdout
+			local has_traceback = false
+			for _, line in ipairs(stdout) do
+				if line:match("Traceback") then
+					has_traceback = true
+					break
+				end
+			end
+			local failed = exit_code ~= 0 or has_traceback
+
+			if not failed then
+				vim.notify(
+					"✅ Slide presentation completed successfully.",
+					vim.log.levels.INFO,
+					{ title = "ManimSlidesPresent" }
+				)
 			else
-				local log = {}
-				vim.list_extend(log, stdout)
+				-- Combine stdout and stderr for error report
+				local log = vim.deepcopy(stdout)
 				vim.list_extend(log, stderr)
 				vim.notify(
 					"❌ Slide presentation failed:\n" .. table.concat(log, "\n"),

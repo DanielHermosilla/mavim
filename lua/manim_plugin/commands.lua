@@ -7,7 +7,7 @@ local defaults = {
 	manim_slides_executable = "manim-slides",
 	build_dir = "media/videos",
 	default_quality = "-pqh",
-	live_preview = false,
+	-- live_preview = false, -- TODO: Maybe to run OpenGL
 }
 
 local function is_quality_flag(arg)
@@ -46,7 +46,7 @@ function M.define(user_opts)
 	})
 
 	-- :ManimSlideRender <Slide...>
-	vim.api.nvim_create_user_command("ManimSlideRender", function(ctx)
+	vim.api.nvim_create_user_command("ManimSlidesRender", function(ctx)
 		local file = vim.api.nvim_buf_get_name(0)
 		if file == "" then
 			vim.notify("Ensure you are editing a .py file", vim.log.levels.ERROR)
@@ -54,7 +54,7 @@ function M.define(user_opts)
 		end
 		local slides = vim.deepcopy(ctx.fargs)
 		if #slides == 0 then
-			vim.notify("Usage: ManimSlideRender <Slide1> [Slide2 ...]", vim.log.levels.ERROR)
+			vim.notify("Usage: ManimSlidesRender <Slide1> [Slide2 ...]", vim.log.levels.ERROR)
 			return
 		end
 		Job.render_slides(opts, file, slides)
