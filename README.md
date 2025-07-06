@@ -6,8 +6,6 @@ A Neovim plugin to integrate `manim` and `manim-slides`. It provides three user 
 
 - **`:ManimRender [quality] <Scene1> [Scene2 …]`**  
   Renders one or more Manim scene classes from your current buffer’s `.py` file.  
-  - **quality** (optional): pass flags like `-pqh` (high quality), `-pql` (low quality), etc.  
-  - Automatically builds and runs:  
     ```bash
     manim [quality] --media_dir media/videos myfile.py Scene1 Scene2 …
     ```  
