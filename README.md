@@ -6,9 +6,9 @@ A Neovim plugin to integrate `manim` and `manim-slides`. It provides three user 
 
 - **`:ManimRender [quality] <Scene1> [Scene2 …]`**  
   Renders one or more Manim scene classes from your current buffer’s `.py` file.  
-    ```bash
-    manim [quality] --media_dir media/videos myfile.py Scene1 Scene2 …
-    ```  
+```bash
+manim [quality] --media_dir media/videos myfile.py Scene1 Scene2 …
+```  
 
 - **`:ManimSlidesRender <Slide1> [Slide2 …]`**  
   Uses the `manim-slides render` subcommand to generate slide bundles (JSON) for one or more slide classes in your file.
@@ -40,5 +40,7 @@ manim-slides present Slide1 [Slide2 ...]
 }
 ```
 
-> Note: This plugin is prone to a lot of errors. It is still in development. 
-> TODO: An object browser
+> **Note:** This plugin is prone to a lot of errors. It is still in development. 
+
+
+> **TODO:** Add an object browser
